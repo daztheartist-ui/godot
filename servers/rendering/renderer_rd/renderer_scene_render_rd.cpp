@@ -584,7 +584,8 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
 		int max_glow_index = -1;
 		int min_glow_level = RS::MAX_GLOW_LEVELS;
 		for (int i = 0; i < RS::MAX_GLOW_LEVELS; i++) {
-			if (glow_levels[i] > 0.01) {
+			// Keep in sync with tonemap.glsl's threshold to avoid sampling uninitialized glow mip levels.
+			if (glow_levels[i] > 0.0001f) {
 				max_glow_index = MAX(max_glow_index, i);
 				min_glow_level = MIN(min_glow_level, i);
 			}

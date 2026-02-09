@@ -182,7 +182,15 @@ void main() {
 #ifdef MODE_GLOW
 	if (bool(params.flags & FLAG_GLOW_FIRST_PASS)) {
 		// Undo tonemap to restore range: https://graphicrants.blogspot.com/2013/12/tone-mapping.html
-		color /= 1.0 - dot(color.rgb, vec3(0.299, 0.587, 0.114) / max(params.glow_luminance_cap, 6.0));
+		// NOTE: On some GPUs/drivers, FP rounding in the prefilter+blur path can make the inverse denominator
+		// go to (or below) zero for very bright pixels, which then produces NaNs/Infs that show up as glow artifacts.
+		// Clamp to keep it well-defined.
+		float inv_denom = 1.0 - dot(color.rgb, vec3(0.299, 0.587, 0.114) / max(params.glow_luminance_cap, 6.0));
+		inv_denom = max(inv_denom, 1e-4);
+		color /= inv_denom;
+
+		color = mix(color, vec4(0.0), isinf(color));
+		color = mix(color, vec4(0.0), isnan(color));
 	}
 
 	color *= params.glow_strength;

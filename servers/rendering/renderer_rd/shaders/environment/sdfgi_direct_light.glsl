@@ -404,39 +404,50 @@ void main() {
 
 		float cMax = max(cRed, max(cGreen, cBlue));
 
-		float expp = max(-B - 1.0f, floor(log(cMax) / LN2)) + 1.0f + B;
+		// Avoid undefined/driver-dependent behavior from log(0) or log(NaN).
+		// When the input is black (or invalid), the encoded value should be 0.
+		if (!(cMax > 0.0)) {
+			light_total_rgbe = 0u;
+		} else {
+			float expp = max(-B - 1.0f, floor(log(cMax) / LN2)) + 1.0f + B;
 
-		float sMax = floor((cMax / pow(2.0f, expp - B - N)) + 0.5f);
+			float sMax = floor((cMax / pow(2.0f, expp - B - N)) + 0.5f);
 
-		float exps = expp + 1.0f;
+			float exps = expp + 1.0f;
 
-		if (0.0 <= sMax && sMax < pow2to9) {
-			exps = expp;
-		}
+			if (0.0 <= sMax && sMax < pow2to9) {
+				exps = expp;
+			}
 
-		float sRed = floor((cRed / pow(2.0f, exps - B - N)) + 0.5f);
-		float sGreen = floor((cGreen / pow(2.0f, exps - B - N)) + 0.5f);
-		float sBlue = floor((cBlue / pow(2.0f, exps - B - N)) + 0.5f);
+			float sRed = floor((cRed / pow(2.0f, exps - B - N)) + 0.5f);
+			float sGreen = floor((cGreen / pow(2.0f, exps - B - N)) + 0.5f);
+			float sBlue = floor((cBlue / pow(2.0f, exps - B - N)) + 0.5f);
 #ifdef MODE_PROCESS_STATIC
-		//since its self-save, use RGBE8985
-		light_total_rgbe = ((uint(sRed) & 0x1FF) >> 1) | ((uint(sGreen) & 0x1FF) << 8) | (((uint(sBlue) & 0x1FF) >> 1) << 17) | ((uint(exps) & 0x1F) << 25);
+			//since its self-save, use RGBE8985
+			light_total_rgbe = ((uint(sRed) & 0x1FF) >> 1) | ((uint(sGreen) & 0x1FF) << 8) | (((uint(sBlue) & 0x1FF) >> 1) << 17) | ((uint(exps) & 0x1F) << 25);
 
 #else
-		light_total_rgbe = (uint(sRed) & 0x1FF) | ((uint(sGreen) & 0x1FF) << 9) | ((uint(sBlue) & 0x1FF) << 18) | ((uint(exps) & 0x1F) << 27);
+			light_total_rgbe = (uint(sRed) & 0x1FF) | ((uint(sGreen) & 0x1FF) << 9) | ((uint(sBlue) & 0x1FF) << 18) | ((uint(exps) & 0x1F) << 27);
 #endif
+		}
 	}
 
 #ifdef MODE_PROCESS_DYNAMIC
 
 	vec4 aniso0;
-	aniso0.r = lumas[0] / luma_total;
-	aniso0.g = lumas[1] / luma_total;
-	aniso0.b = lumas[2] / luma_total;
-	aniso0.a = lumas[3] / luma_total;
-
 	vec2 aniso1;
-	aniso1.r = lumas[4] / luma_total;
-	aniso1.g = lumas[5] / luma_total;
+	if (!(luma_total > 0.0)) {
+		aniso0 = vec4(0.0);
+		aniso1 = vec2(0.0);
+	} else {
+		aniso0.r = lumas[0] / luma_total;
+		aniso0.g = lumas[1] / luma_total;
+		aniso0.b = lumas[2] / luma_total;
+		aniso0.a = lumas[3] / luma_total;
+
+		aniso1.r = lumas[4] / luma_total;
+		aniso1.g = lumas[5] / luma_total;
+	}
 
 	//save to 3D textures
 	imageStore(dst_aniso0, positioni, aniso0);
@@ -497,8 +508,10 @@ void main() {
 	process_voxels.data[voxel_index].light = light; //replace
 
 	uint light_aniso = process_voxels.data[voxel_index].light_aniso & (3 << 30);
-	for (int i = 0; i < 6; i++) {
-		light_aniso |= min(31, uint((lumas[i] / luma_total) * 31.0)) << (i * 5);
+	if (luma_total > 0.0) {
+		for (int i = 0; i < 6; i++) {
+			light_aniso |= min(31, uint((lumas[i] / luma_total) * 31.0)) << (i * 5);
+		}
 	}
 
 	process_voxels.data[voxel_index].light_aniso = light_aniso;

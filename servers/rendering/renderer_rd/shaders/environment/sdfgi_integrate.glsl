@@ -126,6 +126,11 @@ uint rgbe_encode(vec3 color) {
 	float cBlue = clamp(color.b, 0.0, 65408.0);
 
 	float cMax = max(cRed, max(cGreen, cBlue));
+	// Avoid undefined/driver-dependent behavior from log(0) or log(NaN).
+	// When the input is black (or invalid), the encoded value should be 0.
+	if (!(cMax > 0.0)) {
+		return 0u;
+	}
 
 	float expp = max(-B - 1.0f, floor(log(cMax) / LN2)) + 1.0f + B;
 

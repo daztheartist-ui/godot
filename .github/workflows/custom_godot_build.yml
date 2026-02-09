@@ -1,9 +1,9 @@
 name: 🛠️ Custom Godot Build
 on:
   push:
-    branches: [ master, main ]
+    branches: [ master, main, xegtao-feature ]
   pull_request:
-    branches: [ master, main ]
+    branches: [ master, main, xegtao-feature ]
   workflow_dispatch:
 
 # Global Settings

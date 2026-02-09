@@ -1,9 +1,10 @@
 name: 🛠️ Custom Godot Build
 on:
   push:
-    branches: [ master, main, xegtao-feature ]
+    # Include feature branches so CI builds artifacts for testing.
+    branches: [ master, main, xegtao-feature, glow-sdfgi-fixes, "glow-*", "sdfgi-*" ]
   pull_request:
-    branches: [ master, main, xegtao-feature ]
+    branches: [ master, main, xegtao-feature, glow-sdfgi-fixes, "glow-*", "sdfgi-*" ]
   workflow_dispatch:
 
 # Global Settings

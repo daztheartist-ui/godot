@@ -13,7 +13,6 @@ env:
     dev_mode=yes
     module_text_server_fb_enabled=yes
     debug_symbols=no
-    d3d12=no
   SCONS_CACHE_MSVC_CONFIG: true
   PYTHONIOENCODING: utf8
 
@@ -34,11 +33,23 @@ jobs:
               vsproj=yes
               vsproj_gen_only=no
             bin: ./bin/godot.windows.editor.x86_64.exe
+            d3d12: no
+
+          - name: Windows Editor D3D12 (x86_64)
+            cache-name: windows-editor-d3d12
+            target: editor
+            scons-flags: >-
+              windows_subsystem=console
+              vsproj=yes
+              vsproj_gen_only=no
+            bin: ./bin/godot.windows.editor.x86_64.exe
+            d3d12: yes
 
           - name: Windows Template (Release, x86_64)
             cache-name: windows-template
             target: template_release
             bin: ./bin/godot.windows.template_release.x86_64.console.exe
+            d3d12: no
 
     steps:
       - name: Checkout
@@ -49,10 +60,14 @@ jobs:
       - name: Setup Python and SCons
         uses: ./.github/actions/godot-deps
 
+      - name: Install Direct3D 12 SDK components
+        if: matrix.d3d12 == 'yes'
+        run: python ./misc/scripts/install_d3d12_sdk_windows.py
+
       - name: Compilation
         uses: ./.github/actions/godot-build
         with:
-          scons-flags: ${{ env.SCONS_FLAGS }} ${{ matrix.scons-flags }}
+          scons-flags: ${{ env.SCONS_FLAGS }} ${{ matrix.scons-flags }} d3d12=${{ matrix.d3d12 }}
           platform: windows
           target: ${{ matrix.target }}
 

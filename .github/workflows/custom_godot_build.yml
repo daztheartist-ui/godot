@@ -1,0 +1,66 @@
+name: 🛠️ Custom Godot Build
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+# Global Settings
+env:
+  SCONS_FLAGS: >-
+    dev_mode=yes
+    module_text_server_fb_enabled=yes
+    debug_symbols=no
+  SCONS_CACHE_MSVC_CONFIG: true
+  PYTHONIOENCODING: utf8
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    name: ${{ matrix.name }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows Editor (x86_64)
+            cache-name: windows-editor
+            target: editor
+            scons-flags: >-
+              windows_subsystem=console
+              vsproj=yes
+              vsproj_gen_only=no
+            bin: ./bin/godot.windows.editor.x86_64.exe
+
+          - name: Windows Template (Release, x86_64)
+            cache-name: windows-template
+            target: template_release
+            bin: ./bin/godot.windows.template_release.x86_64.console.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Compilation
+        uses: ./.github/actions/godot-build
+        with:
+          scons-flags: ${{ env.SCONS_FLAGS }} ${{ matrix.scons-flags }}
+          platform: windows
+          target: ${{ matrix.target }}
+
+      - name: Prepare artifact
+        if: matrix.target == 'editor'
+        run: |
+          Remove-Item bin/* -Include *.exp,*.lib,*.pdb -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.cache-name }}
+          path: ${{ matrix.bin }}

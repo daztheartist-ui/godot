@@ -13,6 +13,7 @@ env:
     dev_mode=yes
     module_text_server_fb_enabled=yes
     debug_symbols=no
+    d3d12=no
   SCONS_CACHE_MSVC_CONFIG: true
   PYTHONIOENCODING: utf8
 

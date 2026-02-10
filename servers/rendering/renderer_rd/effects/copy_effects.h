@@ -380,7 +380,7 @@ public:
 
 	void gaussian_blur(RID p_source_rd_texture, RID p_texture, const Rect2i &p_region, const Size2i &p_size, bool p_8bit_dst = false);
 	void gaussian_blur_raster(RID p_source_rd_texture, RID p_dest_texture, const Rect2i &p_region, const Size2i &p_size);
-	void gaussian_glow(RID p_source_rd_texture, RID p_back_texture, const Size2i &p_size, float p_strength = 1.0, bool p_first_pass = false, float p_luminance_cap = 16.0, float p_exposure = 1.0, float p_bloom = 0.0, float p_hdr_bleed_threshold = 1.0, float p_hdr_bleed_scale = 1.0, RID p_auto_exposure = RID(), float p_auto_exposure_scale = 1.0);
+	void gaussian_glow(RID p_source_rd_texture, RID p_back_texture, const Size2i &p_size, float p_strength = 1.0, bool p_first_pass = false, float p_luminance_cap = 16.0, float p_exposure = 1.0, float p_bloom = 0.0, float p_hdr_bleed_threshold = 1.0, float p_hdr_bleed_scale = 1.0, RID p_auto_exposure = RID(), float p_auto_exposure_scale = 1.0, RD::ComputeListID p_compute_list = -1);
 	void gaussian_glow_downsample_raster(RID p_source_rd_texture, RID p_dest_texture, float p_luminance_multiplier, const Size2i &p_size, float p_strength = 1.0, bool p_first_pass = false, float p_luminance_cap = 16.0, float p_exposure = 1.0, float p_bloom = 0.0, float p_hdr_bleed_threshold = 1.0, float p_hdr_bleed_scale = 1.0);
 	void gaussian_glow_upsample_raster(RID p_source_rd_texture, RID p_dest_texture, RID p_blend_texture, float p_luminance_multiplier, const Size2i &p_source_size, const Size2i &p_dest_size, float p_level, float p_base_strength, bool p_use_debanding);
 

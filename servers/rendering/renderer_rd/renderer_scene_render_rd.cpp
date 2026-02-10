@@ -600,17 +600,25 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
 				luminance_texture = luminance->get_current_luminance_buffer(rb); // this will return and empty RID if we don't have an auto exposure buffer
 			}
 			for (uint32_t l = 0; l < rb->get_view_count(); l++) {
+				// Batch all glow mip passes into a single compute list with explicit barriers
+				// between passes. This ensures proper UAV synchronization on D3D12 where
+				// successive passes read from a mip level that the previous pass wrote to.
+				RD::ComputeListID compute_list = RD::get_singleton()->compute_list_begin();
+
 				Size2i vp_size = rb->get_texture_slice_size(RB_SCOPE_BUFFERS, RB_TEX_BLUR_1, 0);
 				RID source = rb->get_internal_texture(l);
 				RID dest = rb->get_texture_slice(RB_SCOPE_BUFFERS, RB_TEX_BLUR_1, l, 0);
-				copy_effects->gaussian_glow(source, dest, vp_size, environment_get_glow_strength(p_render_data->environment), true, environment_get_glow_hdr_luminance_cap(p_render_data->environment), environment_get_exposure(p_render_data->environment), environment_get_glow_bloom(p_render_data->environment), environment_get_glow_hdr_bleed_threshold(p_render_data->environment), environment_get_glow_hdr_bleed_scale(p_render_data->environment), luminance_texture, auto_exposure_scale);
+				copy_effects->gaussian_glow(source, dest, vp_size, environment_get_glow_strength(p_render_data->environment), true, environment_get_glow_hdr_luminance_cap(p_render_data->environment), environment_get_exposure(p_render_data->environment), environment_get_glow_bloom(p_render_data->environment), environment_get_glow_hdr_bleed_threshold(p_render_data->environment), environment_get_glow_hdr_bleed_scale(p_render_data->environment), luminance_texture, auto_exposure_scale, compute_list);
 
 				for (int i = 1; i < (max_glow_index + 1); i++) {
+					RD::get_singleton()->compute_list_add_barrier(compute_list);
 					source = dest;
 					vp_size = rb->get_texture_slice_size(RB_SCOPE_BUFFERS, RB_TEX_BLUR_1, i);
 					dest = rb->get_texture_slice(RB_SCOPE_BUFFERS, RB_TEX_BLUR_1, l, i);
-					copy_effects->gaussian_glow(source, dest, vp_size, environment_get_glow_strength(p_render_data->environment));
+					copy_effects->gaussian_glow(source, dest, vp_size, environment_get_glow_strength(p_render_data->environment), false, 16.0, 1.0, 0.0, 1.0, 1.0, RID(), 1.0, compute_list);
 				}
+
+				RD::get_singleton()->compute_list_end();
 			}
 			RD::get_singleton()->draw_command_end_label();
 		} else {

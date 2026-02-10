@@ -809,7 +809,7 @@ void CopyEffects::gaussian_blur_raster(RID p_source_rd_texture, RID p_dest_textu
 	RD::get_singleton()->draw_list_end();
 }
 
-void CopyEffects::gaussian_glow(RID p_source_rd_texture, RID p_back_texture, const Size2i &p_size, float p_strength, bool p_first_pass, float p_luminance_cap, float p_exposure, float p_bloom, float p_hdr_bleed_threshold, float p_hdr_bleed_scale, RID p_auto_exposure, float p_auto_exposure_scale) {
+void CopyEffects::gaussian_glow(RID p_source_rd_texture, RID p_back_texture, const Size2i &p_size, float p_strength, bool p_first_pass, float p_luminance_cap, float p_exposure, float p_bloom, float p_hdr_bleed_threshold, float p_hdr_bleed_scale, RID p_auto_exposure, float p_auto_exposure_scale, RD::ComputeListID p_compute_list) {
 	ERR_FAIL_COND_MSG(raster_effects.has_flag(RASTER_EFFECT_GAUSSIAN_BLUR), "Can't use the compute version of the gaussian glow.");
 
 	UniformSetCacheRD *uniform_set_cache = UniformSetCacheRD::get_singleton();
@@ -844,7 +844,13 @@ void CopyEffects::gaussian_glow(RID p_source_rd_texture, RID p_back_texture, con
 	RID shader = copy.shader.version_get_shader(copy.shader_version, copy_mode);
 	ERR_FAIL_COND(shader.is_null());
 
-	RD::ComputeListID compute_list = RD::get_singleton()->compute_list_begin();
+	bool manage_compute_list = (p_compute_list < 0);
+	RD::ComputeListID compute_list;
+	if (manage_compute_list) {
+		compute_list = RD::get_singleton()->compute_list_begin();
+	} else {
+		compute_list = p_compute_list;
+	}
 	RD::get_singleton()->compute_list_bind_compute_pipeline(compute_list, copy.pipelines[copy_mode].get_rid());
 	RD::get_singleton()->compute_list_bind_uniform_set(compute_list, uniform_set_cache->get_cache(shader, 0, u_source_rd_texture), 0);
 	RD::get_singleton()->compute_list_bind_uniform_set(compute_list, uniform_set_cache->get_cache(shader, 3, u_back_texture), 3);
@@ -857,7 +863,9 @@ void CopyEffects::gaussian_glow(RID p_source_rd_texture, RID p_back_texture, con
 	RD::get_singleton()->compute_list_set_push_constant(compute_list, &copy.push_constant, sizeof(CopyPushConstant));
 
 	RD::get_singleton()->compute_list_dispatch_threads(compute_list, p_size.width, p_size.height, 1);
-	RD::get_singleton()->compute_list_end();
+	if (manage_compute_list) {
+		RD::get_singleton()->compute_list_end();
+	}
 }
 
 void CopyEffects::gaussian_glow_downsample_raster(RID p_source_rd_texture, RID p_dest_texture, float p_luminance_multiplier, const Size2i &p_size, float p_strength, bool p_first_pass, float p_luminance_cap, float p_exposure, float p_bloom, float p_hdr_bleed_threshold, float p_hdr_bleed_scale) {

@@ -37,10 +37,9 @@
 #include "servers/rendering/renderer_rd/shaders/effects/screen_space_reflection_hiz.glsl.gen.h"
 #include "servers/rendering/renderer_rd/shaders/effects/screen_space_reflection_resolve.glsl.gen.h"
 #include "servers/rendering/renderer_rd/shaders/effects/ss_effects_downsample.glsl.gen.h"
-#include "servers/rendering/renderer_rd/shaders/effects/ssao.glsl.gen.h"
-#include "servers/rendering/renderer_rd/shaders/effects/ssao_blur.glsl.gen.h"
-#include "servers/rendering/renderer_rd/shaders/effects/ssao_importance_map.glsl.gen.h"
-#include "servers/rendering/renderer_rd/shaders/effects/ssao_interleave.glsl.gen.h"
+#include "servers/rendering/renderer_rd/shaders/effects/xegtao_prefilter_depth.glsl.gen.h"
+#include "servers/rendering/renderer_rd/shaders/effects/xegtao_main.glsl.gen.h"
+#include "servers/rendering/renderer_rd/shaders/effects/xegtao_denoise.glsl.gen.h"
 #include "servers/rendering/renderer_rd/shaders/effects/ssil.glsl.gen.h"
 #include "servers/rendering/renderer_rd/shaders/effects/ssil_blur.glsl.gen.h"
 #include "servers/rendering/renderer_rd/shaders/effects/ssil_importance_map.glsl.gen.h"
@@ -62,6 +61,12 @@
 #define RB_EDGES SNAME("edges")
 #define RB_IMPORTANCE_MAP SNAME("importance_map")
 #define RB_IMPORTANCE_PONG SNAME("importance_pong")
+
+// XeGTAO buffer names
+#define RB_XEGTAO_DEPTH SNAME("xegtao_depth")
+#define RB_XEGTAO_WORKING_AO SNAME("xegtao_working_ao")
+#define RB_XEGTAO_WORKING_EDGES SNAME("xegtao_working_edges")
+#define RB_XEGTAO_PONG_AO SNAME("xegtao_pong_ao")
 
 #define RB_NORMAL_ROUGHNESS SNAME("normal_roughness")
 #define RB_HIZ SNAME("hiz")
@@ -116,7 +121,7 @@ public:
 	void ssil_allocate_buffers(Ref<RenderSceneBuffersRD> p_render_buffers, SSILRenderBuffers &p_ssil_buffers, const SSILSettings &p_settings);
 	void screen_space_indirect_lighting(Ref<RenderSceneBuffersRD> p_render_buffers, SSILRenderBuffers &p_ssil_buffers, uint32_t p_view, RID p_normal_buffer, const Projection &p_projection, const Projection &p_last_projection, const SSILSettings &p_settings);
 
-	/* SSAO */
+	/* SSAO (XeGTAO) */
 	void ssao_set_quality(RS::EnvironmentSSAOQuality p_quality, bool p_half_size, float p_adaptive_target, int p_blur_passes, float p_fadeout_from, float p_fadeout_to);
 
 	struct SSAORenderBuffers {
@@ -323,99 +328,91 @@ private:
 
 	void gather_ssil(RD::ComputeListID p_compute_list, const RID *p_ssil_slices, const RID *p_edges_slices, const SSILSettings &p_settings, bool p_adaptive_base_pass, RID p_gather_uniform_set, RID p_importance_map_uniform_set, RID p_projection_uniform_set);
 
-	/* SSAO */
+	/* SSAO (XeGTAO) */
 
-	enum SSAOMode {
-		SSAO_GATHER,
-		SSAO_GATHER_BASE,
-		SSAO_GATHER_ADAPTIVE,
-		SSAO_GENERATE_IMPORTANCE_MAP,
-		SSAO_PROCESS_IMPORTANCE_MAPA,
-		SSAO_PROCESS_IMPORTANCE_MAPB,
-		SSAO_BLUR_PASS,
-		SSAO_BLUR_PASS_SMART,
-		SSAO_BLUR_PASS_WIDE,
-		SSAO_INTERLEAVE,
-		SSAO_INTERLEAVE_SMART,
-		SSAO_INTERLEAVE_HALF,
-		SSAO_MAX
+	enum XeGTAOPrefilterMode {
+		XEGTAO_PREFILTER,
+		XEGTAO_PREFILTER_MAX
 	};
 
-	struct SSAOGatherPushConstant {
-		int32_t screen_size[2];
-		int pass;
-		int quality;
-
-		float half_screen_pixel_size[2];
-		int size_multiplier;
-		float detail_intensity;
-
-		float NDC_to_view_mul[2];
-		float NDC_to_view_add[2];
-
-		float pad[2];
-		float half_screen_pixel_size_x025[2];
-
-		float radius;
-		float intensity;
-		float shadow_power;
-		float shadow_clamp;
-
-		float fade_out_mul;
-		float fade_out_add;
-		float horizon_angle_threshold;
-		float inv_radius_near_limit;
-
-		uint32_t is_orthogonal;
-		float neg_inv_radius;
-		float load_counter_avg_div;
-		float adaptive_sample_limit;
-
-		int32_t pass_coord_offset[2];
-		float pass_uv_offset[2];
+	enum XeGTAOMainMode {
+		XEGTAO_MAIN_LOW,
+		XEGTAO_MAIN_MEDIUM,
+		XEGTAO_MAIN_HIGH,
+		XEGTAO_MAIN_ULTRA,
+		XEGTAO_MAIN_MAX
 	};
 
-	struct SSAOImportanceMapPushConstant {
-		float half_screen_pixel_size[2];
-		float intensity;
-		float power;
+	enum XeGTAODenoiseMode {
+		XEGTAO_DENOISE_PASS_0,
+		XEGTAO_DENOISE_PASS_1,
+		XEGTAO_DENOISE_MAX
 	};
 
-	struct SSAOBlurPushConstant {
-		float edge_sharpness;
-		float pad;
-		float half_screen_pixel_size[2];
+	// Push constant for xegtao_prefilter_depth.glsl (96 bytes).
+	struct XeGTAOPrefilterPushConstant {
+		int32_t viewport_size[2];           //  8
+		float viewport_pixel_size[2];       // 16
+
+		float effect_radius;                // 20
+		float effect_falloff_range;         // 24
+		float radius_multiplier;            // 28
+		float pad0;                         // 32
+
+		float inv_proj[16];                 // 96
 	};
 
-	struct SSAOInterleavePushConstant {
-		float inv_sharpness;
-		uint32_t size_modifier;
-		float pixel_size[2];
+	// Push constant for xegtao_main.glsl (80 bytes).
+	struct XeGTAOMainPushConstant {
+		float viewport_size[2];             //  8
+		float viewport_pixel_size[2];       // 16
+
+		float ndc_to_view_mul[2];           // 24
+		float ndc_to_view_add[2];           // 32
+
+		float ndc_to_view_mul_x_pixel[2];   // 40
+		float effect_radius;                // 44
+		float effect_falloff_range;         // 48
+
+		float radius_multiplier;            // 52
+		float final_value_power;            // 56
+		float sample_distribution_power;    // 60
+		float thin_occluder_compensation;   // 64
+
+		float depth_mip_sampling_offset;    // 68
+		int32_t noise_index;                // 72
+		float pad0;                         // 76
+		float pad1;                         // 80
 	};
 
-	struct SSAO {
-		SSAOGatherPushConstant gather_push_constant;
-		SsaoShaderRD gather_shader;
-		RID gather_shader_version;
+	// Push constant for xegtao_denoise.glsl (32 bytes).
+	struct XeGTAODenoisePushConstant {
+		int32_t viewport_size[2];           //  8
+		float viewport_pixel_size[2];       // 16
+		float denoise_blur_beta;            // 20
+		uint32_t pad0;                      // 24
+		uint32_t pad1;                      // 28
+		uint32_t pad2;                      // 32
+	};
 
-		SSAOImportanceMapPushConstant importance_map_push_constant;
-		SsaoImportanceMapShaderRD importance_map_shader;
-		RID importance_map_shader_version;
-		RID importance_map_load_counter;
-		RID counter_uniform_set;
+	struct XeGTAO {
+		XeGTAOPrefilterPushConstant prefilter_push_constant;
+		XegtaoPrefilterDepthShaderRD prefilter_shader;
+		RID prefilter_shader_version;
+		PipelineDeferredRD prefilter_pipeline;
 
-		SSAOBlurPushConstant blur_push_constant;
-		SsaoBlurShaderRD blur_shader;
-		RID blur_shader_version;
+		XeGTAOMainPushConstant main_push_constant;
+		XegtaoMainShaderRD main_shader;
+		RID main_shader_version;
+		PipelineDeferredRD main_pipelines[XEGTAO_MAIN_MAX];
 
-		SSAOInterleavePushConstant interleave_push_constant;
-		SsaoInterleaveShaderRD interleave_shader;
-		RID interleave_shader_version;
+		XeGTAODenoisePushConstant denoise_push_constant;
+		XegtaoDenoiseShaderRD denoise_shader;
+		RID denoise_shader_version;
+		PipelineDeferredRD denoise_pipelines[XEGTAO_DENOISE_MAX];
 
-		PipelineDeferredRD pipelines[SSAO_MAX];
-	} ssao;
-
-	void gather_ssao(RD::ComputeListID p_compute_list, const RID *p_ao_slices, const SSAOSettings &p_settings, bool p_adaptive_base_pass, RID p_gather_uniform_set, RID p_importance_map_uniform_set);
+		int noise_index = 0;
+	} xegtao;
 
 	/* Screen Space Reflection */
 

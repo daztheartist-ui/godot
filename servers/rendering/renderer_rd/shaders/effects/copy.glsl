@@ -184,28 +184,51 @@ void main() {
 		// Undo tonemap to restore range: https://graphicrants.blogspot.com/2013/12/tone-mapping.html
 		// NOTE: On some GPUs/drivers, FP rounding in the prefilter+blur path can make the inverse denominator
 		// go to (or below) zero for very bright pixels, which then produces NaNs/Infs that show up as glow artifacts.
-		// Clamp to keep it well-defined.
+		// Floor of 0.1 limits the inverse tonemap amplification to 10x, preventing extreme-but-valid
+		// values that cause bright flashing pixel artifacts on D3D12 due to FP rounding differences.
 		float inv_denom = 1.0 - dot(color.rgb, vec3(0.299, 0.587, 0.114) / max(params.glow_luminance_cap, 6.0));
-		inv_denom = max(inv_denom, 1e-4);
+		inv_denom = max(inv_denom, 0.1);
 		color /= inv_denom;
+
+		// Clamp to luminance cap immediately after inverse tonemap to prevent extreme values
+		// from snowballing through the mip chain.
+		color = min(color, vec4(params.glow_luminance_cap));
 
 		color = mix(color, vec4(0.0), isinf(color));
 		color = mix(color, vec4(0.0), isnan(color));
 	}
 
 	color *= params.glow_strength;
+	// Keep non-first glow passes finite as well, so invalid values can't propagate through the mip chain.
+	color = mix(color, vec4(0.0), isinf(color));
+	color = mix(color, vec4(0.0), isnan(color));
 
 	if (bool(params.flags & FLAG_GLOW_FIRST_PASS)) {
 #ifdef GLOW_USE_AUTO_EXPOSURE
 
-		color /= texelFetch(source_auto_exposure, ivec2(0, 0), 0).r / params.glow_auto_exposure_scale;
+		float auto_exposure = texelFetch(source_auto_exposure, ivec2(0, 0), 0).r;
+		float auto_exposure_denom = auto_exposure / max(params.glow_auto_exposure_scale, 1e-4);
+		if (!(auto_exposure_denom > 0.0)) {
+			auto_exposure_denom = 1.0;
+		}
+		color /= auto_exposure_denom;
 #endif
 		color *= params.glow_exposure;
 
 		float luminance = max(color.r, max(color.g, color.b));
-		float feedback = max(smoothstep(params.glow_hdr_threshold, params.glow_hdr_threshold + params.glow_hdr_scale, luminance), params.glow_bloom);
+		if (!(luminance >= 0.0)) {
+			luminance = 0.0;
+		}
 
-		color = min(color * feedback, vec4(params.glow_luminance_cap));
+		float hdr_scale = max(params.glow_hdr_scale, 1e-4);
+		float feedback = max(smoothstep(params.glow_hdr_threshold, params.glow_hdr_threshold + hdr_scale, luminance), params.glow_bloom);
+		if (!(feedback >= 0.0)) {
+			feedback = params.glow_bloom;
+		}
+		feedback = clamp(feedback, 0.0, 1.0);
+
+		color = max(color * feedback, vec4(0.0));
+		color = min(color, vec4(params.glow_luminance_cap));
 	}
 #endif // MODE_GLOW
 	imageStore(dest_buffer, pos + params.target, color);

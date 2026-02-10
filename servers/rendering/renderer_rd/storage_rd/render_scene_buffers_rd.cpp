@@ -530,6 +530,11 @@ void RenderSceneBuffersRD::allocate_blur_textures() {
 	create_texture(RB_SCOPE_BUFFERS, RB_TEX_BLUR_0, get_base_data_format(), usage_bits, RD::TEXTURE_SAMPLES_1, blur_size, view_count, mipmaps_required);
 	create_texture(RB_SCOPE_BUFFERS, RB_TEX_BLUR_1, get_base_data_format(), usage_bits, RD::TEXTURE_SAMPLES_1, Size2i(blur_size.x >> 1, blur_size.y >> 1), view_count, mipmaps_required - 1);
 
+	// Zero-initialize blur textures to prevent D3D12 artifacts from undefined memory contents.
+	// D3D12 textures start with D3D12_BARRIER_LAYOUT_UNDEFINED; Vulkan tends to zero by chance.
+	RD::get_singleton()->texture_clear(get_texture(RB_SCOPE_BUFFERS, RB_TEX_BLUR_0), Color(0, 0, 0, 0), 0, mipmaps_required, 0, view_count);
+	RD::get_singleton()->texture_clear(get_texture(RB_SCOPE_BUFFERS, RB_TEX_BLUR_1), Color(0, 0, 0, 0), 0, mipmaps_required - 1, 0, view_count);
+
 	// TODO redo this:
 	if (!can_be_storage) {
 		// create 4 weight textures, 2 full size, 2 half size

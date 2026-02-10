@@ -406,6 +406,8 @@ vec3 gather_glow(SAMPLER_FORMAT tex, vec2 uv) { // sample all selected glow leve
 	}
 
 	glow = glow * params.luminance_multiplier;
+	glow = mix(glow, vec3(0.0), isinf(glow));
+	glow = mix(glow, vec3(0.0), isnan(glow));
 
 	return glow;
 }
@@ -862,6 +864,8 @@ void main() {
 #else
 	vec4 color = textureLod(source_color, uv_interp, 0.0f);
 #endif
+	color = mix(color, vec4(0.0), isinf(color));
+	color = mix(color, vec4(0.0), isnan(color));
 	color.rgb *= params.luminance_multiplier;
 
 	// Exposure
@@ -869,7 +873,11 @@ void main() {
 	float exposure = params.exposure;
 
 	if (bool(params.flags & FLAG_USE_AUTO_EXPOSURE)) {
-		exposure *= 1.0 / (texelFetch(source_auto_exposure, ivec2(0, 0), 0).r * params.luminance_multiplier / params.auto_exposure_scale);
+		float auto_exposure = texelFetch(source_auto_exposure, ivec2(0, 0), 0).r * params.luminance_multiplier / max(params.auto_exposure_scale, 1e-4);
+		if (!(auto_exposure > 0.0)) {
+			auto_exposure = 1.0;
+		}
+		exposure *= 1.0 / auto_exposure;
 	}
 
 	color.rgb *= exposure;
@@ -956,5 +964,7 @@ void main() {
 		color.rgb += screen_space_dither(gl_FragCoord.xy, 255.0);
 	}
 
+	color = mix(color, vec4(0.0), isinf(color));
+	color = mix(color, vec4(0.0), isnan(color));
 	frag_color = color;
 }
